@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "binom"
+version = "0.1.0"
+description = "Binomial canopy radiation model; incorporating updates investigated by Wright, Salazar Martinez, and Quintanilla Albornoz"
+authors = [
+    {name = "Alejandra Ponce de Leon"},
+    {name = "Brian Bailey"},
+    {name = "Ian Wright"},
+    {name = "Diego Salazar Martinez"},
+    {name = "Manuel Quintanilla Albornoz"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
