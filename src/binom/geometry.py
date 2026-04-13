@@ -6,6 +6,7 @@ import pvlib
 
 """
 This module contains all functions related to the configuration/processing of BINOM's geometric components
+Path length related functions are not included in this module. See path.py
 Note: LAD processing is also included here, as it is considered a geometric parameter
 """
 
@@ -205,6 +206,82 @@ def add_canopy_geometry(df, canopy_params):
 
     for key in required_keys:
         df[key] = canopy_params[key]
+
+    return df
+
+def compute_lad(LAI, canopy_params):
+    """
+    Compute within-crown leaf area density (LAD) using LAI and canopy geometry.
+
+    Parameters
+    ----------
+    LAI : float
+        Leaf area index [m2 m-2]
+    canopy_params : dict
+        Must contain:
+            - sp : plant spacing [m]
+            - sr : row spacing [m]
+            - CrownVerticalRadius : vertical crown radius [m]
+            - wc : canopy width [m]
+
+    Returns
+    -------
+    float
+        Leaf area density [m2 m-3]
+    """
+
+    required_keys = ["sp", "sr", "CrownVerticalRadius", "wc"]
+    missing = [k for k in required_keys if k not in canopy_params]
+    if missing:
+        raise ValueError(f"Missing keys in canopy_params: {missing}")
+
+    sp = canopy_params["sp"]
+    sr = canopy_params["sr"]
+    CrownVerticalRadius = canopy_params["CrownVerticalRadius"]
+    wc = canopy_params["wc"]
+
+    # Geometry
+    r = wc / 2.0
+    H = 2.0 * CrownVerticalRadius
+
+    crown_volume = (2.0 / 3.0) * np.pi * r**2 * H
+
+    if crown_volume <= 0:
+        raise ValueError("Computed crown volume must be > 0.")
+
+    lad = (LAI * sp * sr) / crown_volume
+
+    return lad
+
+def add_lad(df, LAI, canopy_params):
+    """
+    Add LAD to dataframe using LAI and canopy geometry dictionary.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input dataframe
+    LAI : float
+        Leaf area index [m2 m-2]
+    canopy_params : dict
+        Must contain:
+            - sp
+            - sr
+            - CrownVerticalRadius
+            - wc
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy with 'lad' and 'sr' columns added
+    """
+
+    df = df.copy()
+
+    lad_value = compute_lad(LAI, canopy_params)
+
+    df["lad"] = lad_value
+    df["sr"] = canopy_params["sr"]
 
     return df
 
