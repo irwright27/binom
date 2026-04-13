@@ -1,6 +1,243 @@
-import os
+from numpy import sqrt
 import numpy as np
-from numpy import sqrt, sin, arcsin, cos, arccos, exp, pi, linspace, ceil
+import pandas as pd
+import matplotlib.pyplot as plt
+import pvlib
+
+
+def get_spos(
+    lat,
+    lon,
+    date,
+    tz="America/Los_Angeles",
+    altitude=0,
+    freq="5min",
+    daylight_only=True,
+    include_vectors=False
+):
+    """
+    Generate solar position dataframe for a single day
+    with BINOM-compatible parameter names.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Indexed by time, includes:
+            - sza (rad)
+            - azimuth (deg)
+            - optional direction vectors (dx, dy, dz)
+    """
+
+    # --------------------------------------------------
+    # Time index
+    # --------------------------------------------------
+    times = pd.date_range(
+        start=f"{date} 00:00:00",
+        end=f"{date} 23:55:00",
+        freq=freq,
+        tz=tz
+    )
+
+    # --------------------------------------------------
+    # Location
+    # --------------------------------------------------
+    site = pvlib.location.Location(
+        latitude=lat,
+        longitude=lon,
+        tz=tz,
+        altitude=altitude
+    )
+
+    # --------------------------------------------------
+    # Solar position
+    # --------------------------------------------------
+    solpos = site.get_solarposition(times)
+
+    df = solpos[
+        ["apparent_zenith", "azimuth", "apparent_elevation"]
+    ].copy()
+
+    # --------------------------------------------------
+    # Daylight filter
+    # --------------------------------------------------
+    if daylight_only:
+        df = df[df["apparent_elevation"] > 0].copy()
+
+    # --------------------------------------------------
+    # Rename + compute BINOM variables
+    # --------------------------------------------------
+    df["sza"] = np.deg2rad(df["apparent_zenith"])  # <-- key rename
+
+    # --------------------------------------------------
+    # Optional: sun direction vectors (for BINOM)
+    # Convention: x=east, y=north, z=up
+    # Rays pointing FROM sun → ground
+    # --------------------------------------------------
+    if include_vectors:
+        zen = df["sza"].values
+        azi = np.deg2rad(df["azimuth"].values)
+
+        sx = np.sin(zen) * np.sin(azi)
+        sy = np.sin(zen) * np.cos(azi)
+        sz = np.cos(zen)
+
+        df["dx"] = -sx
+        df["dy"] = -sy
+        df["dz"] = -sz
+
+    return df
+
+def plot_solar_angles(df, title=None):
+    """
+    Plot solar zenith and azimuth from a dataframe.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Output from get_solar_position_df()
+    """
+
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # Zenith
+    ax1.plot(df.index, df["apparent_zenith"], label="Zenith (deg)")
+    ax1.set_ylabel("Zenith (deg)")
+    ax1.set_xlabel("Time")
+
+    # Azimuth (secondary axis)
+    ax2 = ax1.twinx()
+    ax2.plot(df.index, df["azimuth"], linestyle="--", label="Azimuth (deg)")
+    ax2.set_ylabel("Azimuth (deg)")
+
+    # Title
+    if title is None:
+        title = "Solar Zenith and Azimuth"
+    ax1.set_title(title)
+
+    # Combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2)
+
+    plt.tight_layout()
+    plt.show()
+
+def wrap_angle_pi(angle_rad):
+    """
+    Wrap angle to [-pi, pi].
+    """
+    return (angle_rad + np.pi) % (2 * np.pi) - np.pi
+
+def add_psi(df, row_azimuth_deg):
+    """
+    Add psi (sun azimuth relative to row orientation) to dataframe.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain column 'azimuth' in degrees (from pvlib)
+    row_azimuth_deg : float
+        Row orientation in degrees clockwise from north
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy with 'psi' column added (radians)
+    """
+    df = df.copy()
+
+    # Convert to radians
+    sun_azimuth_rad = np.deg2rad(df["azimuth"].values)
+    row_azimuth_rad = np.deg2rad(row_azimuth_deg)
+
+    # Compute relative angle
+    psi = wrap_angle_pi(sun_azimuth_rad - row_azimuth_rad)
+
+    df["psi"] = psi
+
+    return df
+
+def add_Gtheta(df, model="spherical", chi=None):
+    """
+    Add G(theta) to dataframe.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain 'sza' (radians)
+    model : str
+        "spherical" (default) or "ellipsoidal"
+    chi : float or None
+        Shape parameter for ellipsoidal distribution
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy with 'Gtheta' column added
+    """
+
+    df = df.copy()
+
+    if "sza" not in df.columns:
+        raise ValueError("DataFrame must contain 'sza' (radians)")
+
+    if model == "spherical":
+        df["Gtheta"] = 0.5
+
+    elif model == "ellipsoidal":
+        if chi is None:
+            raise ValueError("chi must be provided for ellipsoidal model")
+
+        theta = df["sza"].values
+
+        # Campbell (1986) approximation
+        # This is a commonly used formulation
+        x = chi
+
+        G = np.sqrt(x**2 + np.tan(theta)**2) / (x + 1.774 * (x + 1.182)**-0.733)
+
+        df["Gtheta"] = G
+
+    else:
+        raise ValueError(f"Unknown model: {model}")
+
+    return df
+
+def add_canopy_geometry(df, canopy_params):
+    """
+    Add canopy geometry parameters to dataframe from a dictionary.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input dataframe
+    canopy_params : dict
+        Must contain:
+            - CrownVerticalRadius
+            - z
+            - wc
+            - sp
+            - sr
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy with canopy geometry columns added
+    """
+
+    required_keys = ["CrownVerticalRadius", "z", "wc", "sp", "sr"]
+
+    # Check inputs
+    missing = [k for k in required_keys if k not in canopy_params]
+    if missing:
+        raise ValueError(f"Missing keys in canopy_params: {missing}")
+
+    df = df.copy()
+
+    for key in required_keys:
+        df[key] = canopy_params[key]
+
+    return df
 
 def intersectBBox(ox, oy, oz, dx, dy, dz, sizex, sizey, sizez):
 
@@ -81,3 +318,35 @@ def intersectBBox(ox, oy, oz, dx, dy, dz, sizex, sizey, sizez):
     if dr == 0:
         return 0, None, None, None  # signal no intersection
     return dr, xe, ye, ze
+
+def intersectEllipsoid(ox, oy, oz, dx, dy, dz, sizex, sizey, sizez):
+
+    tempx = ox/sizex
+    tempy = oy/sizey
+    tempz = (oz - 0.5)/sizez
+
+    dx = dx/sizex
+    dy = dy/sizey
+    dz = dz/sizez
+
+    a = dx*dx + dy*dy + dz*dz
+
+    b = 2.0 * (tempx*dx+tempy*dy+tempz*dz)
+
+    c = (tempx*tempx+tempy*tempy+tempz*tempz) - 0.5*0.5
+    disc = b * b - 4.0 * a * c
+
+    if disc < 0.0:
+        return 0
+    else:
+        e = sqrt(disc)
+        denom = 2.0 * a
+
+        t_small = (-b - e) / denom  # smaller root
+        t_big = (-b + e) / denom  # larger root
+
+        if t_small > 1e-6 or t_big > 1e-6:
+            dr = abs(t_big-t_small)
+            return dr
+
+    return 0
