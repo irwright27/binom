@@ -4,6 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pvlib
 
+"""
+This module contains all functions related to the configuration/processing of BINOM's geometric components
+Note: LAD processing is also included here, as it is considered a geometric parameter
+"""
 
 def get_spos(
     lat,

@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+"""
+This module contains functions that allow the user to visualize/diagnose BINOM results
+"""
+
 def plot_solar_angles(df, title=None):
 
     """

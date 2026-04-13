@@ -2,6 +2,10 @@ import numpy as np
 from numpy import sqrt, sin, cos, ceil
 from .geometry import intersectBBox, intersectEllipsoid
 
+"""
+This module contains all functions related the processing of radiative path lengths necessary within BINOM
+"""
+
 def pathlengths(shape, scale_x, scale_y, scale_z, ray_zenith, ray_azimuth, nrays, plyfile='', outputfile=''):
 
     kEpsilon = 1e-5
