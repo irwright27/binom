@@ -87,41 +87,6 @@ def get_spos(
 
     return df
 
-def plot_solar_angles(df, title=None):
-    """
-    Plot solar zenith and azimuth from a dataframe.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Output from get_solar_position_df()
-    """
-
-    fig, ax1 = plt.subplots(figsize=(10, 5))
-
-    # Zenith
-    ax1.plot(df.index, df["apparent_zenith"], label="Zenith (deg)")
-    ax1.set_ylabel("Zenith (deg)")
-    ax1.set_xlabel("Time")
-
-    # Azimuth (secondary axis)
-    ax2 = ax1.twinx()
-    ax2.plot(df.index, df["azimuth"], linestyle="--", label="Azimuth (deg)")
-    ax2.set_ylabel("Azimuth (deg)")
-
-    # Title
-    if title is None:
-        title = "Solar Zenith and Azimuth"
-    ax1.set_title(title)
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2)
-
-    plt.tight_layout()
-    plt.show()
-
 def wrap_angle_pi(angle_rad):
     """
     Wrap angle to [-pi, pi].
