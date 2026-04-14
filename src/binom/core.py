@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from binom.path import pathlengthdistribution
+from binom.inputs import prepare_binom_inputs
 
 """
 Core functions to run binom.
@@ -278,17 +279,19 @@ def compute_binomial_ellipsoid(
     else:
         return Rc_PARdir, Rs_PARdir, Rc_PARdiff, Rs_PARdiff
 
-def binom_ts(df, model_prefs):
+def binom_ts(model_params):
     """
     Run BINOM for every row in the dataframe and append outputs
     as new columns to a copy of the input dataframe, including canopy fAPAR.
     """
 
-    nrays = model_prefs["nrays"]
-    Nbins = model_prefs["Nbins"]
-    shape = model_prefs.get("shape", "ellipsoid")
-    Nz_diff = model_prefs.get("Nz_diff", 8)
-    Nphi_diff = model_prefs.get("Nphi_diff", 16)
+    df = prepare_binom_inputs(model_params)
+
+    nrays = model_params["nrays"]
+    Nbins = model_params["Nbins"]
+    shape = model_params.get("shape", "ellipsoid")
+    Nz_diff = model_params.get("Nz_diff", 8)
+    Nphi_diff = model_params.get("Nphi_diff", 16)
 
     out_df = df.copy()
 
